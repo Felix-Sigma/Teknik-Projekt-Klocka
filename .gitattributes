@@ -1,2 +1,128 @@
-# Auto detect text files and perform LF normalization
-* text=auto
+/*
+* Name: clock and temp project
+* Author: Felix Fagrell 
+* Date: 2024-10-18 
+* Description: This project uses a DS3231 module to measure time and temperature and displays the time on a 1306 OLED display.
+* If the temperature is 22°C or higher, a relay-driven motor and two LEDs are activated.
+*/
+
+// Include Libraries
+#include <RTClib.h>
+#include <Wire.h>
+#include <Servo.h>
+#include <U8glib.h>
+
+// Init constants
+const int servoPin = 9;      // Pin for servo motor
+const int motorPin = 10;     // Pin for motor relay
+const int ledPin = 11;       // Pin for LEDs (changed to digital pin 11)
+
+// Init global variables
+RTC_DS3231 rtc;
+Servo myServo;
+U8GLIB_SSD1306_128X64 u8g(U8G_I2C_OPT_NONE | U8G_I2C_OPT_DEV_0);  // OLED display
+
+// construct objects
+void setup() {
+  // Init communication
+  Serial.begin(9600);
+  Wire.begin();
+  
+  // Init Hardware
+  rtc.begin();
+  rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));  // Set time to compile time
+  myServo.attach(servoPin); 
+  
+  // Set pin modes
+  pinMode(motorPin, OUTPUT);
+  pinMode(ledPin, OUTPUT);
+}
+
+void loop() {
+  // Read and display time and temperature every second
+  oledWrite(getTime());
+  
+  float temp = getTemp();
+  servoWrite(temp);
+  
+  // Activate motor and LEDs if temperature is 22°C or higher
+  if (temp >= 22.0) {
+    digitalWrite(motorPin, HIGH);   // Start motor
+    blinkLEDs();                    // Blink LEDs
+  } else {
+    digitalWrite(motorPin, LOW);    // Stop motor
+    digitalWrite(ledPin, LOW);      // Turn off LEDs
+  }
+  
+  delay(1000);
+}
+
+/*
+* This function reads time from the DS3231 module and packages the time as a String.
+* Parameters: Void
+* Returns: time in hh:mm:ss as String
+*/
+String getTime() {
+  DateTime now = rtc.now();
+  
+  String hour = String(now.hour());
+  String minute = String(now.minute());
+  String second = String(now.second());
+  
+  if (hour.length() < 2) hour = "0" + hour;      // Format with leading zeros
+  if (minute.length() < 2) minute = "0" + minute;
+  if (second.length() < 2) second = "0" + second;
+  
+  return "Time: " + hour + ":" + minute + ":" + second;     // Return formatted time
+}
+
+/*
+* This function reads the temperature from the DS3231's built-in sensor.
+* Parameters: Void
+* Returns: temperature as a float
+*/
+float getTemp() {
+  return rtc.getTemperature();  // Read temperature from DS3231
+}
+
+/*
+* This function takes a string and draws it to the OLED display.
+* Parameters: - text: String to write to the display
+* Returns: void
+*/
+void oledWrite(String text) {
+  u8g.firstPage();  // Start rendering to the screen
+  do {
+    u8g.setFont(u8g_font_6x10);  // Set font
+    u8g.drawStr(5, 20, text.c_str());  // Display time on the screen
+    
+    String tempStr = "Temp: " + String(getTemp()) + String(char(176)) + "C";  // Add temperature
+    u8g.drawStr(5, 40, tempStr.c_str());  // Display temperature on the screen
+    
+  } while (u8g.nextPage());  // Move to the next screen page
+}
+
+/*
+* This function takes a temperature value and maps it to a corresponding degree on a servo motor.
+* Parameters: - value: temperature
+* Returns: void
+*/
+void servoWrite(float value) {
+  int angle = map(value, 20, 30, 0, 180);  // Map temperature to servo angle (adjust range as needed)
+  angle = constrain(angle, 0, 180);  // Constrain the angle to stay within bounds
+  myServo.write(angle);  // Move the servo
+}
+
+/*
+* This function blinks two LEDs connected to ledPin rapidly.
+* Parameters: None
+* Returns: void
+*/
+void blinkLEDs() {
+  for (int i = 0; i < 5; i++) {   // Blink LEDs 5 times quickly
+    digitalWrite(ledPin, HIGH);
+    delay(50);
+    digitalWrite(ledPin, LOW);
+    delay(50);
+  }
+}
